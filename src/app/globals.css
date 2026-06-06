@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   DESIGN TOKENS
+   All colours are OKLCH. Neutrals are tinted slightly warm so nothing feels
+   clinical. If you ever want to retheme, change these values in one place.
+   ============================================================================= */
+@theme {
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Surfaces */
+  --color-paper: oklch(0.968 0.004 75);   /* page background (warm off-white) */
+  --color-card: oklch(0.995 0.002 80);    /* the main white card */
+  --color-sunken: oklch(0.975 0.004 75);  /* inset areas, inputs */
+
+  /* Ink */
+  --color-ink: oklch(0.24 0.012 60);      /* primary text (warm near-black) */
+  --color-ink-soft: oklch(0.46 0.012 60); /* secondary text */
+  --color-ink-faint: oklch(0.62 0.01 60); /* hints, placeholders */
+
+  /* Lines */
+  --color-line: oklch(0.91 0.005 75);     /* borders */
+  --color-line-strong: oklch(0.85 0.006 75);
+
+  /* Brand accent: a deep teal. Used for primary actions + selection only. */
+  --color-accent: oklch(0.52 0.092 200);
+  --color-accent-hover: oklch(0.46 0.092 200);
+  --color-accent-soft: oklch(0.95 0.03 200);
+  --color-accent-ink: oklch(0.99 0.005 200);
+
+  /* Semantic states */
+  --color-warn: oklch(0.70 0.13 70);          /* "stuck" amber */
+  --color-warn-bg: oklch(0.965 0.04 80);
+  --color-warn-line: oklch(0.87 0.08 75);
+  --color-warn-ink: oklch(0.45 0.09 60);
+
+  --color-danger: oklch(0.55 0.18 25);        /* delete */
+  --color-danger-hover: oklch(0.49 0.18 25);
+  --color-danger-soft: oklch(0.96 0.03 25);
+
+  --color-go: oklch(0.55 0.12 150);           /* complete / success */
+  --color-go-soft: oklch(0.95 0.04 150);
+
+  /* Stage hues (muted, for badges + tab dots) */
+  --color-stage1: oklch(0.58 0.08 250);
+  --color-stage2: oklch(0.56 0.10 300);
+  --color-stage3: oklch(0.60 0.10 55);
+  --color-stage4: oklch(0.55 0.09 150);
+
+  /* Radii + shadow */
+  --radius-card: 18px;
+  --radius-box: 12px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px oklch(0.4 0.02 60 / 0.05), 0 12px 40px oklch(0.4 0.02 60 / 0.07);
+  --shadow-pop: 0 8px 30px oklch(0.3 0.02 60 / 0.16);
+
+  /* Motion */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ----------------------------------------------------------------------------- */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numbers and codes line up better with tabular figures */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Focus ring used everywhere for keyboard users */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---- Buttons ---------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font: inherit;
+  font-weight: 560;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--radius-box);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease-out-quint),
+              border-color 0.15s var(--ease-out-quint),
+              transform 0.08s var(--ease-out-quint),
+              box-shadow 0.15s var(--ease-out-quint);
+  user-select: none;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* sizes */
+.btn-md { padding: 0.625rem 0.95rem; font-size: 0.9rem; }
+.btn-lg { padding: 0.85rem 1.15rem; font-size: 1rem; }
+.btn-sm { padding: 0.45rem 0.7rem; font-size: 0.825rem; }
+.btn-block { width: 100%; }
+
+/* variants */
+.btn-primary { background: var(--color-accent); color: var(--color-accent-ink); }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+.btn-go { background: var(--color-go); color: oklch(0.99 0.01 150); }
+.btn-go:hover:not(:disabled) { background: oklch(0.49 0.12 150); }
+
+.btn-outline {
+  background: var(--color-card);
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
+}
+.btn-outline:hover:not(:disabled) { background: var(--color-sunken); border-color: var(--color-ink-faint); }
+
+.btn-ghost { background: transparent; color: var(--color-ink-soft); }
+.btn-ghost:hover:not(:disabled) { background: var(--color-sunken); color: var(--color-ink); }
+
+.btn-danger-ghost { background: transparent; color: var(--color-danger); }
+.btn-danger-ghost:hover:not(:disabled) { background: var(--color-danger-soft); }
+
+.btn-danger { background: var(--color-danger); color: oklch(0.99 0.01 25); }
+.btn-danger:hover:not(:disabled) { background: var(--color-danger-hover); }
+
+/* ---- Inputs ----------------------------------------------------------------- */
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 560;
+  color: var(--color-ink-soft);
+  margin-bottom: 0.35rem;
+}
+.input, .textarea, .select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-box);
+  padding: 0.6rem 0.75rem;
+  transition: border-color 0.15s var(--ease-out-quint), box-shadow 0.15s var(--ease-out-quint);
+}
+.input::placeholder, .textarea::placeholder { color: var(--color-ink-faint); }
+.input:focus, .textarea:focus, .select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.textarea { resize: vertical; min-height: 4.5rem; line-height: 1.5; }
+
+/* ---- Misc helpers ----------------------------------------------------------- */
+.mono { font-family: var(--font-mono); }
+
+/* Pop-in animation for dialogs / dropdowns (transform + opacity only) */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.animate-pop { animation: pop-in 0.18s var(--ease-out-quint); }
+.animate-fade { animation: fade-in 0.15s var(--ease-out-quint); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
