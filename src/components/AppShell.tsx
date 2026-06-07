@@ -45,6 +45,16 @@ type Block =
   | { kind: "single"; order: Order }
   | { kind: "group"; groupId: string; name: string | null; orders: Order[] };
 
+// Pulls a readable message out of either a JS Error or a Supabase error object.
+function errText(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { message?: string; details?: string; hint?: string };
+    return o.message || o.details || o.hint || fallback;
+  }
+  return fallback;
+}
+
 export default function AppShell({ userEmail }: { userEmail: string }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -77,7 +87,7 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
       setAudit((data ?? []) as AuditEntry[]);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load data.");
+      setError(errText(e, "Could not load data."));
     } finally {
       setLoading(false);
     }
@@ -149,7 +159,7 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
       await fn();
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setError(errText(e, "Something went wrong."));
     }
   }
 
