@@ -1,34 +1,55 @@
 "use client";
 
 // Top-bar search across ALL stages (including Completed) by order number,
-// customer, and destination. Click a result to jump to that order.
+// customer, destination, AND batch code / product / packaging.
+// Click a result to jump to that order.
 import { useEffect, useMemo, useRef, useState } from "react";
 import StageBadge from "./ui/StageBadge";
-import type { Order } from "@/lib/types";
+import type { Batch, Order } from "@/lib/types";
 
 export default function GlobalSearch({
   orders,
+  batchesByOrder,
   onJump,
 }: {
   orders: Order[];
+  batchesByOrder: Record<string, Batch[]>;
   onJump: (order: Order) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
+  // Each result is an order, plus (if it only matched on a batch) a short note
+  // saying which batch matched, so it's clear why it showed up.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return orders
-      .filter(
-        (o) =>
-          o.order_number.toLowerCase().includes(q) ||
-          o.customer.toLowerCase().includes(q) ||
-          o.destination.toLowerCase().includes(q)
-      )
-      .slice(0, 12);
-  }, [orders, query]);
+    const out: { order: Order; batchMatch?: string }[] = [];
+    for (const o of orders) {
+      const inOrder =
+        o.order_number.toLowerCase().includes(q) ||
+        o.customer.toLowerCase().includes(q) ||
+        o.destination.toLowerCase().includes(q);
+
+      const batches = batchesByOrder[o.id] ?? [];
+      const matchedBatch = batches.find(
+        (b) =>
+          b.code.toLowerCase().includes(q) ||
+          b.product.toLowerCase().includes(q) ||
+          b.packaging.toLowerCase().includes(q)
+      );
+
+      if (inOrder || matchedBatch) {
+        out.push({
+          order: o,
+          batchMatch: !inOrder && matchedBatch ? matchedBatch.code || matchedBatch.product : undefined,
+        });
+      }
+      if (out.length >= 12) break;
+    }
+    return out;
+  }, [orders, batchesByOrder, query]);
 
   // Close the dropdown when clicking outside.
   useEffect(() => {
@@ -43,14 +64,14 @@ export default function GlobalSearch({
     <div ref={boxRef} style={{ position: "relative", flex: "1 1 280px", maxWidth: 460 }}>
       <input
         className="input"
-        placeholder="Search all orders…"
+        placeholder="Search orders & batches…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        aria-label="Search all orders"
+        aria-label="Search orders and batches"
       />
 
       {open && query.trim() !== "" && (
@@ -75,7 +96,7 @@ export default function GlobalSearch({
               No matches.
             </p>
           ) : (
-            results.map((o) => (
+            results.map(({ order: o, batchMatch }) => (
               <button
                 key={o.id}
                 onClick={() => {
@@ -105,6 +126,11 @@ export default function GlobalSearch({
                 <div style={{ fontSize: "0.82rem", color: "var(--color-ink-soft)", marginTop: "0.2rem" }}>
                   {o.customer || "—"} · {o.destination || "—"}
                 </div>
+                {batchMatch && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--color-ink-faint)", marginTop: "0.15rem" }}>
+                    matches batch <span className="mono">{batchMatch}</span>
+                  </div>
+                )}
               </button>
             ))
           )}

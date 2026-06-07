@@ -1,16 +1,19 @@
 "use client";
 
-// The bar above the card: title, global search, Audit Log button, sign out.
+// The bar above the card: title, global search, theme toggle, Audit Log, sign out.
 import GlobalSearch from "./GlobalSearch";
+import ThemeToggle from "./ThemeToggle";
 import { APP_TITLE } from "@/lib/config";
-import type { Order } from "@/lib/types";
+import type { Batch, Order } from "@/lib/types";
 
 export default function TopBar({
   orders,
+  batchesByOrder,
   onJump,
   onOpenAudit,
 }: {
   orders: Order[];
+  batchesByOrder: Record<string, Batch[]>;
   onJump: (o: Order) => void;
   onOpenAudit: () => void;
 }) {
@@ -28,9 +31,10 @@ export default function TopBar({
         {APP_TITLE}
       </h1>
 
-      <GlobalSearch orders={orders} onJump={onJump} />
+      <GlobalSearch orders={orders} batchesByOrder={batchesByOrder} onJump={onJump} />
 
       <div style={{ display: "flex", gap: "0.5rem", marginLeft: "auto" }}>
+        <ThemeToggle />
         <button className="btn btn-outline btn-md" onClick={onOpenAudit}>
           Audit Log
         </button>

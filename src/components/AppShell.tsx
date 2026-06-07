@@ -149,7 +149,12 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
           padding: "1.5rem",
         }}
       >
-        <TopBar orders={orders} onJump={jumpTo} onOpenAudit={() => setDialog({ type: "audit" })} />
+        <TopBar
+          orders={orders}
+          batchesByOrder={batchesByOrder}
+          onJump={jumpTo}
+          onOpenAudit={() => setDialog({ type: "audit" })}
+        />
 
         {error && (
           <div
