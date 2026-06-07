@@ -1,32 +1,39 @@
 "use client";
 
-// Opens when moving an order from Stage 2 to Stage 3. Collect one or more
-// batches, then confirm to move the order forward.
+// Opens when moving an order (or a whole group) from Stage 2 to Stage 3.
+// For a group, each order gets its own batch list. Confirm to move them all.
 import { useState } from "react";
 import Dialog from "./ui/Dialog";
 import BatchRows, { blankBatch } from "./BatchRows";
 import type { DraftBatch, Order } from "@/lib/types";
 
 export default function BatchesDialog({
-  order,
+  orders,
   onConfirm,
   onCancel,
 }: {
-  order: Order;
-  onConfirm: (batches: DraftBatch[]) => void;
+  orders: Order[];
+  onConfirm: (batchesByOrder: Record<string, DraftBatch[]>) => void;
   onCancel: () => void;
 }) {
-  const [rows, setRows] = useState<DraftBatch[]>([blankBatch()]);
+  const isGroup = orders.length > 1;
+  const [rowsByOrder, setRowsByOrder] = useState<Record<string, DraftBatch[]>>(() =>
+    Object.fromEntries(orders.map((o) => [o.id, [blankBatch()]]))
+  );
   const [busy, setBusy] = useState(false);
+
+  function setRowsFor(orderId: string, rows: DraftBatch[]) {
+    setRowsByOrder((prev) => ({ ...prev, [orderId]: rows }));
+  }
 
   function confirm() {
     setBusy(true);
-    onConfirm(rows);
+    onConfirm(rowsByOrder);
   }
 
   return (
     <Dialog
-      title="Book for pickup — add batches"
+      title={isGroup ? `Book ${orders.length} orders for pickup` : "Book for pickup — add batches"}
       onClose={onCancel}
       wide
       footer={
@@ -41,10 +48,28 @@ export default function BatchesDialog({
       }
     >
       <p style={{ margin: "0 0 1rem", color: "var(--color-ink-soft)", fontSize: "0.9rem" }}>
-        Order <span className="mono" style={{ color: "var(--color-ink)" }}>{order.order_number}</span>.
         Add the batches being shipped, then confirm.
       </p>
-      <BatchRows rows={rows} setRows={setRows} />
+
+      <div style={{ display: "grid", gap: "1.25rem" }}>
+        {orders.map((o) => (
+          <div key={o.id}>
+            <div
+              style={{
+                fontSize: "0.85rem",
+                marginBottom: "0.5rem",
+                color: "var(--color-ink-soft)",
+              }}
+            >
+              Order{" "}
+              <span className="mono" style={{ color: "var(--color-ink)", fontWeight: 600 }}>
+                {o.order_number}
+              </span>
+            </div>
+            <BatchRows rows={rowsByOrder[o.id]} setRows={(rows) => setRowsFor(o.id, rows)} />
+          </div>
+        ))}
+      </div>
     </Dialog>
   );
 }

@@ -185,6 +185,46 @@ export async function saveBatches(
   }
 }
 
+// ---- grouping ---------------------------------------------------------------
+// Put several orders into one group (they ship to the same place). All selected
+// orders get the same group_id so they can be moved together.
+export async function groupOrders(supabase: SB, orders: Order[], name: string): Promise<void> {
+  const groupId = crypto.randomUUID();
+  const ids = orders.map((o) => o.id);
+  const { error } = await supabase
+    .from("orders")
+    .update({ group_id: groupId, group_name: name || null, updated_at: new Date().toISOString() })
+    .in("id", ids);
+  if (error) throw error;
+
+  await logAudit(supabase, {
+    order_id: null,
+    order_number: orders.map((o) => o.order_number).join(", "),
+    action: "grouped",
+    detail: `Grouped ${orders.length} orders${name ? ` as "${name}"` : ""}`,
+  });
+}
+
+// Break a group apart (clears the group from every order in it).
+export async function ungroupOrders(
+  supabase: SB,
+  groupId: string,
+  members: Order[]
+): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .update({ group_id: null, group_name: null, updated_at: new Date().toISOString() })
+    .eq("group_id", groupId);
+  if (error) throw error;
+
+  await logAudit(supabase, {
+    order_id: null,
+    order_number: members.map((o) => o.order_number).join(", "),
+    action: "ungrouped",
+    detail: `Ungrouped ${members.length} orders`,
+  });
+}
+
 // ---- delete -----------------------------------------------------------------
 export async function deleteOrder(supabase: SB, order: Order): Promise<void> {
   // Log BEFORE deleting (order_id will be set to null by the DB afterwards).

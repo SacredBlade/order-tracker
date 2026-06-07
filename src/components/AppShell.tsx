@@ -9,12 +9,14 @@ import {
   createOrder,
   deleteOrder,
   fetchAll,
+  groupOrders,
   moveOrderForward,
   reopenOrder,
   saveBatches,
+  ungroupOrders,
   updateOrder,
 } from "@/lib/db";
-import { type StageNumber } from "@/lib/config";
+import { STAGES, type StageNumber } from "@/lib/config";
 import type { AuditEntry, Batch, DraftBatch, Order } from "@/lib/types";
 
 import TopBar from "./TopBar";
@@ -25,15 +27,23 @@ import BatchesDialog from "./BatchesDialog";
 import ReopenDialog from "./ReopenDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import AuditLogPanel from "./AuditLogPanel";
+import GroupNameDialog from "./GroupNameDialog";
 
 type DialogState =
   | { type: "none" }
   | { type: "add" }
   | { type: "edit"; order: Order }
-  | { type: "batches"; order: Order }
+  | { type: "batches"; orders: Order[] } // one order, or a whole group
   | { type: "reopen"; order: Order }
   | { type: "confirmDelete"; order: Order }
+  | { type: "groupName"; orders: Order[] }
+  | { type: "confirmMoveGroup"; orders: Order[]; label: string }
   | { type: "audit" };
+
+// A row in the list is either one order or a group of orders.
+type Block =
+  | { kind: "single"; order: Order }
+  | { kind: "group"; groupId: string; name: string | null; orders: Order[] };
 
 export default function AppShell({ userEmail }: { userEmail: string }) {
   const supabase = useMemo(() => createClient(), []);
@@ -48,6 +58,10 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
   const [dialog, setDialog] = useState<DialogState>({ type: "none" });
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+
+  // Select mode (for grouping): which orders are ticked.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // ---- load + realtime ------------------------------------------------------
   const reload = useCallback(async () => {
@@ -106,6 +120,26 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
 
   const visibleOrders = useMemo(() => orders.filter((o) => o.stage === tab), [orders, tab]);
 
+  // Turn the visible orders into rows: grouped orders cluster into one block.
+  const blocks = useMemo(() => {
+    const out: Block[] = [];
+    const groupBlock: Record<string, Extract<Block, { kind: "group" }>> = {};
+    for (const o of visibleOrders) {
+      if (o.group_id) {
+        let b = groupBlock[o.group_id];
+        if (!b) {
+          b = { kind: "group", groupId: o.group_id, name: o.group_name, orders: [] };
+          groupBlock[o.group_id] = b;
+          out.push(b);
+        }
+        b.orders.push(o);
+      } else {
+        out.push({ kind: "single", order: o });
+      }
+    }
+    return out;
+  }, [visibleOrders]);
+
   // ---- action wrapper -------------------------------------------------------
   // Runs an action, then reloads. Realtime also reloads, but reloading here
   // makes the change feel instant for the person who clicked.
@@ -123,16 +157,65 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
   function onMove(order: Order) {
     if (order.stage === 2) {
       // Stage 2 -> 3 first asks for batches.
-      setDialog({ type: "batches", order });
+      setDialog({ type: "batches", orders: [order] });
     } else {
       run(() => moveOrderForward(supabase, order));
     }
+  }
+
+  // Move every order in a group that is currently in the given stage.
+  function onMoveGroup(members: Order[], stage: number) {
+    if (members.length === 0) return;
+    if (stage === 2) {
+      setDialog({ type: "batches", orders: members });
+    } else {
+      const label = STAGES[stage as StageNumber]?.moveButton ?? "Move";
+      setDialog({ type: "confirmMoveGroup", orders: members, label });
+    }
+  }
+
+  // ---- selection / grouping -------------------------------------------------
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelect() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
   }
 
   function jumpTo(order: Order) {
     setTab(order.stage as StageNumber);
     setHighlightId(order.id);
     window.setTimeout(() => setHighlightId(null), 2500);
+  }
+
+  const selectedOrders = visibleOrders.filter((o) => selectedIds.has(o.id));
+
+  // Renders one order card with all its handlers wired up.
+  function renderCard(o: Order, inGroup: boolean) {
+    return (
+      <OrderCard
+        key={o.id}
+        order={o}
+        batches={batchesByOrder[o.id] ?? []}
+        now={now}
+        highlight={highlightId === o.id}
+        inGroup={inGroup}
+        selectable={selectMode}
+        selected={selectedIds.has(o.id)}
+        onToggleSelect={() => toggleSelect(o.id)}
+        onMove={() => onMove(o)}
+        onEdit={() => setDialog({ type: "edit", order: o })}
+        onDelete={() => setDialog({ type: "confirmDelete", order: o })}
+        onReopen={() => setDialog({ type: "reopen", order: o })}
+      />
+    );
   }
 
   // ---- render ---------------------------------------------------------------
@@ -180,13 +263,53 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
-          <button className="btn btn-primary btn-lg" onClick={() => setDialog({ type: "add" })}>
-            + Add Order
-          </button>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "0.75rem",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          {selectMode ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                className="btn btn-primary btn-md"
+                disabled={selectedIds.size < 2}
+                onClick={() => setDialog({ type: "groupName", orders: selectedOrders })}
+              >
+                Group together ({selectedIds.size})
+              </button>
+              <button className="btn btn-ghost btn-md" onClick={exitSelect}>
+                Cancel
+              </button>
+              <span style={{ fontSize: "0.83rem", color: "var(--color-ink-faint)" }}>
+                Tick the orders that ship together.
+              </span>
+            </div>
+          ) : (
+            <button className="btn btn-outline btn-md" onClick={() => setSelectMode(true)}>
+              Select / group
+            </button>
+          )}
+
+          {!selectMode && (
+            <button className="btn btn-primary btn-lg" onClick={() => setDialog({ type: "add" })}>
+              + Add Order
+            </button>
+          )}
         </div>
 
-        <Tabs active={tab} counts={counts} onChange={setTab} />
+        <Tabs
+          active={tab}
+          counts={counts}
+          onChange={(s) => {
+            setTab(s);
+            setSelectedIds(new Set());
+          }}
+        />
 
         {/* List */}
         {loading ? (
@@ -195,19 +318,22 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
           <EmptyState tab={tab} />
         ) : (
           <div style={{ display: "grid", gap: "0.85rem" }}>
-            {visibleOrders.map((o) => (
-              <OrderCard
-                key={o.id}
-                order={o}
-                batches={batchesByOrder[o.id] ?? []}
-                now={now}
-                highlight={highlightId === o.id}
-                onMove={() => onMove(o)}
-                onEdit={() => setDialog({ type: "edit", order: o })}
-                onDelete={() => setDialog({ type: "confirmDelete", order: o })}
-                onReopen={() => setDialog({ type: "reopen", order: o })}
-              />
-            ))}
+            {blocks.map((block) =>
+              block.kind === "single" ? (
+                renderCard(block.order, false)
+              ) : (
+                <GroupBlock
+                  key={block.groupId}
+                  block={block}
+                  stage={tab}
+                  onMoveGroup={() => onMoveGroup(block.orders, tab)}
+                  onUngroup={() =>
+                    run(() => ungroupOrders(supabase, block.groupId, block.orders))
+                  }
+                  renderCard={renderCard}
+                />
+              )
+            )}
           </div>
         )}
       </div>
@@ -246,13 +372,50 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
 
       {dialog.type === "batches" && (
         <BatchesDialog
-          order={dialog.order}
+          orders={dialog.orders}
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={(draftBatches: DraftBatch[]) => {
-            const order = dialog.order;
-            run(() => moveOrderForward(supabase, order, draftBatches)).then(() =>
-              setDialog({ type: "none" })
-            );
+          onConfirm={(batchesByOrder: Record<string, DraftBatch[]>) => {
+            const members = dialog.orders;
+            run(async () => {
+              for (const o of members) {
+                await moveOrderForward(supabase, o, batchesByOrder[o.id]);
+              }
+            }).then(() => setDialog({ type: "none" }));
+          }}
+        />
+      )}
+
+      {dialog.type === "groupName" && (
+        <GroupNameDialog
+          count={dialog.orders.length}
+          onCancel={() => setDialog({ type: "none" })}
+          onConfirm={(name) => {
+            const sel = dialog.orders;
+            run(() => groupOrders(supabase, sel, name)).then(() => {
+              setDialog({ type: "none" });
+              exitSelect();
+            });
+          }}
+        />
+      )}
+
+      {dialog.type === "confirmMoveGroup" && (
+        <ConfirmDialog
+          title="Move whole group?"
+          confirmLabel="Move all"
+          message={
+            <>
+              This moves all {dialog.orders.length} orders in this group to the next stage.
+            </>
+          }
+          onCancel={() => setDialog({ type: "none" })}
+          onConfirm={() => {
+            const members = dialog.orders;
+            run(async () => {
+              for (const o of members) {
+                await moveOrderForward(supabase, o);
+              }
+            }).then(() => setDialog({ type: "none" }));
           }}
         />
       )}
@@ -319,6 +482,74 @@ function EmptyState({ tab }: { tab: StageNumber }) {
       }}
     >
       {msg}
+    </div>
+  );
+}
+
+// A group of orders that ship together. Shows a header with the group name,
+// a single "move" button that advances every order in the group, and Ungroup.
+function GroupBlock({
+  block,
+  stage,
+  onMoveGroup,
+  onUngroup,
+  renderCard,
+}: {
+  block: { kind: "group"; groupId: string; name: string | null; orders: Order[] };
+  stage: StageNumber;
+  onMoveGroup: () => void;
+  onUngroup: () => void;
+  renderCard: (o: Order, inGroup: boolean) => React.ReactNode;
+}) {
+  const moveLabel = STAGES[stage]?.moveButton;
+  const isActive = stage >= 1 && stage <= 3;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-line-strong)",
+        borderRadius: "var(--radius-box)",
+        background: "var(--color-sunken)",
+        padding: "0.85rem",
+      }}
+    >
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+          marginBottom: "0.75rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span
+            style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--color-accent)" }}
+          />
+          <strong style={{ fontSize: "0.95rem" }}>{block.name || "Group"}</strong>
+          <span style={{ fontSize: "0.82rem", color: "var(--color-ink-faint)" }}>
+            · {block.orders.length} orders
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {isActive && moveLabel && (
+            <button
+              className={`btn btn-md ${stage === 3 ? "btn-go" : "btn-primary"}`}
+              onClick={onMoveGroup}
+            >
+              {moveLabel}
+            </button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={onUngroup}>
+            Ungroup
+          </button>
+        </div>
+      </header>
+
+      <div style={{ display: "grid", gap: "0.6rem" }}>
+        {block.orders.map((o) => renderCard(o, true))}
+      </div>
     </div>
   );
 }

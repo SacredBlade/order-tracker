@@ -20,8 +20,11 @@ create table if not exists public.orders (
   created_at       timestamptz not null default now(),  -- when the order was added
   stage_entered_at timestamptz not null default now(),  -- when it entered its CURRENT stage
   completed_at     timestamptz,                         -- set when moved to Completed
-  updated_at       timestamptz not null default now()
+  updated_at       timestamptz not null default now(),
+  group_id         uuid,                                -- orders sharing this id are grouped
+  group_name       text                                 -- optional label for the group
 );
+create index if not exists orders_group_id_idx on public.orders(group_id);
 
 -- ----------------------------------------------------------------------------
 -- 2. BATCHES  (one order can have many batches)

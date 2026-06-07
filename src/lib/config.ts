@@ -20,7 +20,7 @@ export const STAGES = {
     moveButton: "Packing List Sent → Next", // button on the card
   },
   2: {
-    tab: "2. Sales Documents",
+    tab: "2. Awaiting Sales Documents",
     moveButton: "Booked for Pickup → Next", // this one opens the Batches dialog first
   },
   3: {

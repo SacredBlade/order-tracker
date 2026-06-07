@@ -11,6 +11,8 @@ export type Order = {
   stage_entered_at: string;
   completed_at: string | null;
   updated_at: string;
+  group_id: string | null;   // orders sharing this id are grouped together
+  group_name: string | null; // optional label for the group (e.g. destination)
 };
 
 export type Batch = {

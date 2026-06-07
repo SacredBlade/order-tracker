@@ -12,6 +12,10 @@ export default function OrderCard({
   batches,
   now,
   highlight,
+  inGroup = false,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
   onMove,
   onEdit,
   onDelete,
@@ -21,6 +25,10 @@ export default function OrderCard({
   batches: Batch[];
   now: number;
   highlight: boolean;
+  inGroup?: boolean;        // true when this card sits inside a group (group moves it)
+  selectable?: boolean;     // true when "Select" mode is on
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onMove: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -50,8 +58,19 @@ export default function OrderCard({
     >
       {/* Top line: order number + status */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.75rem" }}>
-        <span className="mono" style={{ fontSize: "1.05rem", fontWeight: 600, letterSpacing: "-0.01em" }}>
-          {order.order_number}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.55rem" }}>
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              aria-label={`Select order ${order.order_number}`}
+              style={{ width: 17, height: 17, cursor: "pointer", flexShrink: 0 }}
+            />
+          )}
+          <span className="mono" style={{ fontSize: "1.05rem", fontWeight: 600, letterSpacing: "-0.01em" }}>
+            {order.order_number}
+          </span>
         </span>
         {completed ? (
           <span style={{ fontSize: "0.8rem", color: "var(--color-ink-faint)", whiteSpace: "nowrap" }}>
@@ -125,6 +144,11 @@ export default function OrderCard({
           <button className="btn btn-primary btn-md" onClick={onReopen}>
             Reopen
           </button>
+        ) : inGroup ? (
+          // Orders in a group are moved together from the group's button above.
+          <span style={{ fontSize: "0.8rem", color: "var(--color-ink-faint)", alignSelf: "center" }}>
+            Moves with group
+          </span>
         ) : (
           <button
             className={`btn btn-md ${order.stage === 3 ? "btn-go" : "btn-primary"}`}
