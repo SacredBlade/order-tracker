@@ -12,11 +12,24 @@ export default function ReopenDialog({
   onCancel,
 }: {
   order: Order;
-  onConfirm: (stage: number) => void;
+  onConfirm: (stage: number) => Promise<void>;
   onCancel: () => void;
 }) {
   const [stage, setStage] = useState<number>(3);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm(stage);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setBusy(false);
+    }
+  }
 
   return (
     <Dialog
@@ -29,10 +42,7 @@ export default function ReopenDialog({
           </button>
           <button
             className="btn btn-primary btn-md"
-            onClick={() => {
-              setBusy(true);
-              onConfirm(stage);
-            }}
+            onClick={confirm}
             disabled={busy}
           >
             {busy ? "Reopening…" : "Reopen order"}
@@ -43,6 +53,11 @@ export default function ReopenDialog({
       <p style={{ margin: "0 0 1rem", color: "var(--color-ink-soft)" }}>
         Send order <span className="mono" style={{ color: "var(--color-ink)" }}>{order.order_number}</span> back to:
       </p>
+      {error && (
+        <p style={{ margin: "0 0 1rem", color: "var(--color-danger)", fontSize: "0.85rem" }}>
+          {error}
+        </p>
+      )}
       <div style={{ display: "grid", gap: "0.6rem" }}>
         {ACTIVE_STAGES.map((s) => (
           <label

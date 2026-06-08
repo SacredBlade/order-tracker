@@ -6,6 +6,10 @@ import Dialog from "./ui/Dialog";
 import BatchRows, { blankBatch } from "./BatchRows";
 import type { Batch, DraftBatch, Order } from "@/lib/types";
 
+function capitalizeWords(value: string): string {
+  return value.trim().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
 export default function AddEditOrderDialog({
   mode,
   order,
@@ -51,8 +55,8 @@ export default function AddEditOrderDialog({
       await onSave(
         {
           order_number: orderNumber.trim(),
-          customer: customer.trim(),
-          destination: destination.trim(),
+          customer: capitalizeWords(customer),
+          destination: capitalizeWords(destination),
           notes: notes.trim(),
         },
         isEdit ? rows : null

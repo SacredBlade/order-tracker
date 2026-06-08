@@ -3,7 +3,7 @@
 // The heart of the app. Loads everything from Supabase, keeps it in sync with
 // realtime, and wires up all the actions. Every action saves to Supabase
 // immediately, then the UI refreshes from the database.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   createOrder,
@@ -55,7 +55,7 @@ function errText(e: unknown, fallback: string): string {
   return fallback;
 }
 
-export default function AppShell({ userEmail }: { userEmail: string }) {
+export default function AppShell() {
   const supabase = useMemo(() => createClient(), []);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -153,13 +153,15 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
   // ---- action wrapper -------------------------------------------------------
   // Runs an action, then reloads. Realtime also reloads, but reloading here
   // makes the change feel instant for the person who clicked.
-  async function run(fn: () => Promise<void>) {
+  async function run(fn: () => Promise<void>): Promise<boolean> {
     try {
       setError(null);
       await fn();
       await reload();
+      return true;
     } catch (e) {
       setError(errText(e, "Something went wrong."));
+      return false;
     }
   }
 
@@ -354,9 +356,10 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
           mode="add"
           onCancel={() => setDialog({ type: "none" })}
           onSave={async (fields) => {
-            await run(async () => {
+            const ok = await run(async () => {
               await createOrder(supabase, fields);
             });
+            if (!ok) throw new Error("Could not add order.");
             setTab(1);
             setDialog({ type: "none" });
           }}
@@ -371,10 +374,11 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
           onCancel={() => setDialog({ type: "none" })}
           onSave={async (fields, draftBatches) => {
             const order = dialog.order;
-            await run(async () => {
+            const ok = await run(async () => {
               await updateOrder(supabase, order, fields);
               if (draftBatches) await saveBatches(supabase, { ...order, ...fields }, draftBatches);
             });
+            if (!ok) throw new Error("Could not save order.");
             setDialog({ type: "none" });
           }}
         />
@@ -384,13 +388,15 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
         <BatchesDialog
           orders={dialog.orders}
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={(batchesByOrder: Record<string, DraftBatch[]>) => {
+          onConfirm={async (batchesByOrder: Record<string, DraftBatch[]>) => {
             const members = dialog.orders;
-            run(async () => {
+            const ok = await run(async () => {
               for (const o of members) {
                 await moveOrderForward(supabase, o, batchesByOrder[o.id]);
               }
-            }).then(() => setDialog({ type: "none" }));
+            });
+            if (ok) setDialog({ type: "none" });
+            else throw new Error("Could not save batches.");
           }}
         />
       )}
@@ -399,12 +405,12 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
         <GroupNameDialog
           count={dialog.orders.length}
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={(name) => {
+          onConfirm={async (name) => {
             const sel = dialog.orders;
-            run(() => groupOrders(supabase, sel, name)).then(() => {
-              setDialog({ type: "none" });
-              exitSelect();
-            });
+            const ok = await run(() => groupOrders(supabase, sel, name));
+            if (!ok) throw new Error("Could not group orders.");
+            setDialog({ type: "none" });
+            exitSelect();
           }}
         />
       )}
@@ -419,13 +425,18 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
             </>
           }
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={() => {
+          onConfirm={async () => {
             const members = dialog.orders;
-            run(async () => {
+            const ok = await run(async () => {
               for (const o of members) {
                 await moveOrderForward(supabase, o);
               }
-            }).then(() => setDialog({ type: "none" }));
+            });
+            if (ok) {
+              setDialog({ type: "none" });
+            } else {
+              throw new Error("Could not move group.");
+            }
           }}
         />
       )}
@@ -434,12 +445,12 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
         <ReopenDialog
           order={dialog.order}
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={(stage) => {
+          onConfirm={async (stage) => {
             const order = dialog.order;
-            run(() => reopenOrder(supabase, order, stage)).then(() => {
-              setTab(stage as StageNumber);
-              setDialog({ type: "none" });
-            });
+            const ok = await run(() => reopenOrder(supabase, order, stage));
+            if (!ok) throw new Error("Could not reopen order.");
+            setTab(stage as StageNumber);
+            setDialog({ type: "none" });
           }}
         />
       )}
@@ -459,9 +470,14 @@ export default function AppShell({ userEmail }: { userEmail: string }) {
             </>
           }
           onCancel={() => setDialog({ type: "none" })}
-          onConfirm={() => {
+          onConfirm={async () => {
             const order = dialog.order;
-            run(() => deleteOrder(supabase, order)).then(() => setDialog({ type: "none" }));
+            const ok = await run(() => deleteOrder(supabase, order));
+            if (ok) {
+              setDialog({ type: "none" });
+            } else {
+              throw new Error("Could not delete order.");
+            }
           }}
         />
       )}

@@ -10,11 +10,24 @@ export default function GroupNameDialog({
   onCancel,
 }: {
   count: number;
-  onConfirm: (name: string) => void;
+  onConfirm: (name: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm(name.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setBusy(false);
+    }
+  }
 
   return (
     <Dialog
@@ -27,10 +40,7 @@ export default function GroupNameDialog({
           </button>
           <button
             className="btn btn-primary btn-md"
-            onClick={() => {
-              setBusy(true);
-              onConfirm(name.trim());
-            }}
+            onClick={confirm}
             disabled={busy}
           >
             {busy ? "Grouping…" : "Group together"}
@@ -49,11 +59,15 @@ export default function GroupNameDialog({
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            setBusy(true);
-            onConfirm(name.trim());
+            void confirm();
           }
         }}
       />
+      {error && (
+        <p style={{ margin: "0.75rem 0 0", color: "var(--color-danger)", fontSize: "0.85rem" }}>
+          {error}
+        </p>
+      )}
       <p style={{ margin: "0.75rem 0 0", fontSize: "0.83rem", color: "var(--color-ink-faint)" }}>
         These orders will be shown together and can be moved through the stages in one click.
       </p>

@@ -13,7 +13,7 @@ export default function BatchesDialog({
   onCancel,
 }: {
   orders: Order[];
-  onConfirm: (batchesByOrder: Record<string, DraftBatch[]>) => void;
+  onConfirm: (batchesByOrder: Record<string, DraftBatch[]>) => Promise<void>;
   onCancel: () => void;
 }) {
   const isGroup = orders.length > 1;
@@ -21,14 +21,22 @@ export default function BatchesDialog({
     Object.fromEntries(orders.map((o) => [o.id, [blankBatch()]]))
   );
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function setRowsFor(orderId: string, rows: DraftBatch[]) {
     setRowsByOrder((prev) => ({ ...prev, [orderId]: rows }));
   }
 
-  function confirm() {
+  async function confirm() {
+    if (busy) return;
     setBusy(true);
-    onConfirm(rowsByOrder);
+    setError(null);
+    try {
+      await onConfirm(rowsByOrder);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setBusy(false);
+    }
   }
 
   return (
@@ -50,6 +58,12 @@ export default function BatchesDialog({
       <p style={{ margin: "0 0 1rem", color: "var(--color-ink-soft)", fontSize: "0.9rem" }}>
         Add the batches being shipped, then confirm.
       </p>
+
+      {error && (
+        <p style={{ margin: "0 0 1rem", color: "var(--color-danger)", fontSize: "0.85rem" }}>
+          {error}
+        </p>
+      )}
 
       <div style={{ display: "grid", gap: "1.25rem" }}>
         {orders.map((o) => (

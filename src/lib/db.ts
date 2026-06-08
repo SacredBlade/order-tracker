@@ -7,12 +7,17 @@ import type { Batch, DraftBatch, Order } from "./types";
 
 type SB = SupabaseClient;
 
+function capitalizeWords(value: string): string {
+  return value.trim().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
 // ---- audit ------------------------------------------------------------------
 async function logAudit(
   supabase: SB,
   entry: { order_id: string | null; order_number: string; action: string; detail: string }
 ) {
-  await supabase.from("audit_log").insert(entry);
+  const { error } = await supabase.from("audit_log").insert(entry);
+  if (error) throw error;
 }
 
 // ---- create -----------------------------------------------------------------
@@ -25,8 +30,8 @@ export async function createOrder(
     .from("orders")
     .insert({
       order_number: fields.order_number,
-      customer: fields.customer,
-      destination: fields.destination,
+      customer: capitalizeWords(fields.customer),
+      destination: capitalizeWords(fields.destination),
       notes: fields.notes,
       stage: 1,
       created_at: now,
@@ -53,6 +58,10 @@ export async function moveOrderForward(
   order: Order,
   batches?: DraftBatch[]
 ): Promise<void> {
+  if (order.stage < 1 || order.stage > 3) {
+    throw new Error("Only active orders can be moved forward.");
+  }
+
   const nextStage = order.stage + 1;
   const now = new Date().toISOString();
 
@@ -81,6 +90,9 @@ export async function moveOrderForward(
 
 // ---- reopen -----------------------------------------------------------------
 export async function reopenOrder(supabase: SB, order: Order, toStage: number): Promise<void> {
+  if (order.stage !== 4) throw new Error("Only completed orders can be reopened.");
+  if (![1, 2, 3].includes(toStage)) throw new Error("Choose a valid stage to reopen to.");
+
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("orders")
@@ -102,29 +114,35 @@ export async function updateOrder(
   order: Order,
   next: { order_number: string; customer: string; destination: string; notes: string }
 ): Promise<void> {
+  const normalized = {
+    ...next,
+    customer: capitalizeWords(next.customer),
+    destination: capitalizeWords(next.destination),
+  };
+
   // Build a human-readable list of what changed, for the audit log.
   const changes: string[] = [];
-  if (next.order_number !== order.order_number)
-    changes.push(`order number "${order.order_number}" → "${next.order_number}"`);
-  if (next.customer !== order.customer)
-    changes.push(`customer "${order.customer || "—"}" → "${next.customer || "—"}"`);
-  if (next.destination !== order.destination)
-    changes.push(`destination "${order.destination || "—"}" → "${next.destination || "—"}"`);
+  if (normalized.order_number !== order.order_number)
+    changes.push(`order number "${order.order_number}" → "${normalized.order_number}"`);
+  if (normalized.customer !== order.customer)
+    changes.push(`customer "${order.customer || "—"}" → "${normalized.customer || "—"}"`);
+  if (normalized.destination !== order.destination)
+    changes.push(`destination "${order.destination || "—"}" → "${normalized.destination || "—"}"`);
 
-  const notesChanged = next.notes !== order.notes;
+  const notesChanged = normalized.notes !== order.notes;
 
   if (changes.length === 0 && !notesChanged) return; // nothing changed
 
   const { error } = await supabase
     .from("orders")
-    .update({ ...next, updated_at: new Date().toISOString() })
+    .update({ ...normalized, updated_at: new Date().toISOString() })
     .eq("id", order.id);
   if (error) throw error;
 
   if (changes.length > 0) {
     await logAudit(supabase, {
       order_id: order.id,
-      order_number: next.order_number,
+      order_number: normalized.order_number,
       action: "edited",
       detail: changes.join("; "),
     });
@@ -132,7 +150,7 @@ export async function updateOrder(
   if (notesChanged) {
     await logAudit(supabase, {
       order_id: order.id,
-      order_number: next.order_number,
+      order_number: normalized.order_number,
       action: "notes_edited",
       detail: `Notes updated`,
     });
@@ -148,16 +166,17 @@ export async function saveBatches(
   silent = false
 ): Promise<void> {
   // Clear existing, then insert the current set. Simple + reliable.
-  await supabase.from("batches").delete().eq("order_id", order.id);
+  const { error: deleteError } = await supabase.from("batches").delete().eq("order_id", order.id);
+  if (deleteError) throw deleteError;
 
   const rows = drafts
     .filter((d) => d.code.trim() !== "" || d.product.trim() !== "")
     .map((d) => ({
       order_id: order.id,
-      code: d.code.trim(),
+      code: d.code.trim().toUpperCase(),
       product: d.product.trim(),
       packaging: d.packaging.trim(),
-      quantity: Number(d.quantity) || 0,
+      quantity: Math.max(0, Math.floor(Number(d.quantity) || 0)),
     }));
 
   if (rows.length > 0) {
@@ -189,6 +208,8 @@ export async function saveBatches(
 // Put several orders into one group (they ship to the same place). All selected
 // orders get the same group_id so they can be moved together.
 export async function groupOrders(supabase: SB, orders: Order[], name: string): Promise<void> {
+  if (orders.length < 2) throw new Error("Select at least two orders to group.");
+
   const groupId = crypto.randomUUID();
   const ids = orders.map((o) => o.id);
   const { error } = await supabase
